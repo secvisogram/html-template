@@ -45,9 +45,13 @@ describe('removeTrailingComma', () => {
     expect(lambda('a single value', identityRender)).toBe('a single value')
   })
 
-  it('does not strip a comma that is the very first character', () => {
+  it('strips a comma that is the very first character, leaving an empty string', () => {
+    // Regression test: `lastIndexOf(',') > 0` used to skip stripping
+    // whenever the (only) comma was at index 0 (e.g. a single empty-string
+    // list entry rendered as ", "), leaving a stray leading comma in the
+    // output instead of the intended empty result.
     const lambda = removeTrailingComma()
-    expect(lambda(',leading comma', identityRender)).toBe(',leading comma')
+    expect(lambda(', ', identityRender)).toBe('')
   })
 })
 
@@ -112,6 +116,21 @@ describe('secureHref', () => {
     const href = 'data:image/png;base64,QUJD'
     expect(lambda(href, identityRender)).toBe(
       'href="data:image&#x2F;png;base64,QUJD"',
+    )
+  })
+
+  it('accepts a valid base64-encoded data URI whose payload contains a "/" character', () => {
+    // Regression test: `/` in the base64 payload is HTML-escaped to
+    // `&#x2F;` by `render()` (same as the URL scheme itself), but the code
+    // used to only un-escape `&#x3D;` (`=`) before validating the base64
+    // payload - never `&#x2F;` - so any otherwise-valid base64 payload
+    // that happened to contain a `/` was incorrectly rejected outright.
+    const lambda = secureHref()
+    // Base64 for three 0xFF bytes, chosen because it's guaranteed to
+    // encode using only "/" characters (no letters/digits/"+"/"=").
+    const href = 'data:image/png;base64,////'
+    expect(lambda(href, identityRender)).toBe(
+      'href="data:image&#x2F;png;base64,&#x2F;&#x2F;&#x2F;&#x2F;"',
     )
   })
 

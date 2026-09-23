@@ -118,6 +118,65 @@ describe('HTMLTemplate2_0 (end-to-end with enrichDocumentV2_0 + renderMarkdown)'
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&lt;script&gt;')
   })
+
+  it('renders vulnerability-level legal_disclaimer notes', () => {
+    // Regression test: the template computed notes_legal_disclaimer for
+    // each vulnerability (via addVulnerabilityNotesPreviewAttributes) but
+    // never actually rendered it anywhere, unlike every other note
+    // category, which silently dropped these notes from the output.
+    const doc = /** @type {any} */ (structuredClone(minimalV2_0Doc))
+    doc.vulnerabilities = [
+      {
+        title: 'Example vuln',
+        notes: [
+          {
+            category: 'legal_disclaimer',
+            title: 'Disclaimer',
+            text: 'Vulnerability-level legal disclaimer text',
+          },
+        ],
+      },
+    ]
+    const { document: enriched } = enrichDocumentV2_0(doc)
+    const parsed = renderMarkdown(enriched)
+    const html = HTMLTemplate2_0({ document: parsed })
+
+    expect(html).toContain('Vulnerability-level legal disclaimer text')
+  })
+
+  it("renders a product group's markdown summary consistently, whether shown directly or referenced via group_ids", () => {
+    // Regression test: product_tree.product_groups[].summary is a markdown
+    // field, and enrichDocument copies it into `group_ids[].name` on every
+    // remediation/threat that references that group - but that's a plain
+    // string copy, not a shared reference, so it used to need its own
+    // markdown field entry (it didn't have one) and its own {{{triple-brace}}}
+    // template interpolation (it was double-brace, which would otherwise
+    // double-escape the now-rendered HTML into literal `&lt;p&gt;...` text).
+    const doc = /** @type {any} */ (structuredClone(minimalV2_0Doc))
+    doc.product_tree = {
+      product_groups: [
+        { group_id: 'G1', summary: '**Bold Group**', product_ids: [] },
+      ],
+    }
+    doc.vulnerabilities = [
+      {
+        title: 'Example vuln',
+        remediations: [{ category: 'vendor_fix', group_ids: ['G1'] }],
+        threats: [{ category: 'impact', group_ids: ['G1'] }],
+      },
+    ]
+    const { document: enriched } = enrichDocumentV2_0(doc)
+    const parsed = renderMarkdown(enriched)
+    const html = HTMLTemplate2_0({ document: parsed })
+
+    // Rendered directly (product_tree.product_groups[].summary).
+    expect(html).toContain('<b><p><strong>Bold Group</strong></p></b>')
+    // Rendered via remediation.group_ids[].name.
+    expect(html).toContain('<li><p><strong>Bold Group</strong></p></li>')
+    // Never appears as raw, unrendered markdown or double-escaped HTML.
+    expect(html).not.toContain('**Bold Group**')
+    expect(html).not.toContain('&lt;strong&gt;')
+  })
 })
 
 describe('HTMLTemplate2_1 (end-to-end with enrichDocumentV2_1)', () => {
@@ -128,6 +187,17 @@ describe('HTMLTemplate2_1 (end-to-end with enrichDocumentV2_1)', () => {
     expect(html).toContain('<!DOCTYPE html>')
     expect(html).toContain('Test Advisory 2.1')
     expect(html).toContain('ACME-2024-002')
+  })
+
+  it('does not render a stray, always-empty {{$schema}} placeholder', () => {
+    // Regression test: an unlabelled <p>{{$schema}}</p> with no
+    // corresponding field ever set anywhere in enrichDocument - and no
+    // 2.0 equivalent - used to render an empty <p></p> in every document.
+    const enriched = enrichDocumentV2_1(minimalV2_1Doc)
+    const html = HTMLTemplate2_1(enriched)
+
+    expect(html).not.toContain('$schema')
+    expect(html).not.toContain('<p></p>\n  <h1>')
   })
 
   it('shows the CVSS version alongside the vector string/base score in the product status table', () => {
@@ -161,5 +231,51 @@ describe('HTMLTemplate2_1 (end-to-end with enrichDocumentV2_1)', () => {
     expect(html).toContain('CVSS:4.0&#x2F;TEST-VECTOR')
     expect(html).toContain('9.8')
     expect(html).toContain('Affected Product')
+  })
+
+  it('shows the document-level max base score header labelled with the CVSS version that actually produced it', () => {
+    // Regression test: the header used to always say "CVSSv3.1 Base Score"
+    // regardless of which CVSS version the score actually came from. Using
+    // cvss_v2 here (neither v3 nor v4) proves the label is genuinely
+    // computed from the winning score, not just switched between two
+    // hardcoded options.
+    const doc = /** @type {any} */ (structuredClone(minimalV2_1Doc))
+    doc.vulnerabilities = [
+      {
+        metrics: [
+          {
+            products: ['P1'],
+            content: {
+              cvss_v2: { version: '2.0', baseScore: 4.3, vectorString: 'V2' },
+            },
+          },
+        ],
+      },
+    ]
+    const enriched = enrichDocumentV2_1(doc)
+    const html = HTMLTemplate2_1(enriched)
+
+    expect(html).toContain('CVSSv2.0 Base Score: 4.3')
+    expect(html).not.toContain('CVSSv3.1 Base Score')
+  })
+
+  it('renders vulnerability-level legal_disclaimer notes', () => {
+    const doc = /** @type {any} */ (structuredClone(minimalV2_1Doc))
+    doc.vulnerabilities = [
+      {
+        title: 'Example vuln',
+        notes: [
+          {
+            category: 'legal_disclaimer',
+            title: 'Disclaimer',
+            text: 'Vulnerability-level legal disclaimer text',
+          },
+        ],
+      },
+    ]
+    const enriched = enrichDocumentV2_1(doc)
+    const html = HTMLTemplate2_1(enriched)
+
+    expect(html).toContain('Vulnerability-level legal disclaimer text')
   })
 })

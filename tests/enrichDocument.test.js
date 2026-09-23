@@ -116,6 +116,22 @@ describe('enrichDocumentV2_0', () => {
         { id: 'P1', name: 'Related Product' },
       ])
     })
+
+    it('uses the first matching entry when a product_id is defined more than once (invalid but possible CSAF document)', () => {
+      const { document } = enrichDocumentV2_0({
+        document: {},
+        product_tree: {
+          full_product_names: [
+            { product_id: 'P1', name: 'First Definition' },
+            { product_id: 'P1', name: 'Second Definition' },
+          ],
+          product_groups: [{ group_id: 'G1', product_ids: ['P1'] }],
+        },
+      })
+      expect(document.product_tree.product_groups[0].product_ids).toEqual([
+        { id: 'P1', name: 'First Definition' },
+      ])
+    })
   })
 
   describe('vulnerability product_status enrichment', () => {
@@ -267,6 +283,33 @@ describe('enrichDocumentV2_0', () => {
           (/** @type {any} */ r) => r.date,
         ),
       ).toEqual(['2024-01-01', undefined])
+    })
+
+    it('keeps dated remediations correctly sorted even when multiple undated ones are also present', () => {
+      // Regression test: comparing two dateless entries used to compute
+      // new Date(undefined).getTime() - new Date(undefined).getTime(),
+      // i.e. NaN - NaN = NaN, an invalid sort comparator result that could
+      // produce an unstable/incorrect overall order (verified: it did,
+      // e.g. moving the most recent dated entry to the end instead of the
+      // start), rather than just leaving the two dateless entries adjacent.
+      const { document } = enrichDocumentV2_0({
+        document: {},
+        vulnerabilities: [
+          {
+            remediations: [
+              { category: 'vendor_fix' },
+              { category: 'vendor_fix', date: '2024-01-01' },
+              { category: 'vendor_fix' },
+              { category: 'vendor_fix', date: '2025-06-01' },
+            ],
+          },
+        ],
+      })
+      expect(
+        document.vulnerabilities[0].remediations_vendor_fix.map(
+          (/** @type {any} */ r) => r.date,
+        ),
+      ).toEqual(['2025-06-01', '2024-01-01', undefined, undefined])
     })
 
     it('resolves product_ids and group_ids to id/name pairs on each remediation', () => {
@@ -603,6 +646,66 @@ describe('enrichDocumentV2_1', () => {
       // Highest baseScore across metrics wins, regardless of which CVSS
       // version each individual metric happens to use.
       expect(document.document.max_base_score).toBe('10')
+      // The label must reflect whichever CVSS version actually produced the
+      // winning score (v2 here), not always "CVSSv3.1" as it used to be
+      // hardcoded regardless of the real underlying CVSS version.
+      expect(document.document.max_base_score_cvss_label).toBe('CVSSv2.0')
+    })
+  })
+
+  describe('max_base_score_cvss_label', () => {
+    it('is "CVSS" (no version suffix) when there are no scores at all', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        vulnerabilities: [],
+      })
+      expect(document.document.max_base_score_cvss_label).toBe('CVSS')
+    })
+
+    it('reflects CVSS v3 when that is the winning score', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        vulnerabilities: [
+          {
+            metrics: [
+              {
+                products: ['P1'],
+                content: {
+                  cvss_v3: {
+                    version: '3.1',
+                    baseScore: 5.0,
+                    vectorString: 'VEC3',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      })
+      expect(document.document.max_base_score_cvss_label).toBe('CVSSv3.1')
+    })
+
+    it('reflects CVSS v4 when that is the winning score', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        vulnerabilities: [
+          {
+            metrics: [
+              {
+                products: ['P1'],
+                content: {
+                  cvss_v4: {
+                    version: '4.0',
+                    baseScore: 9.8,
+                    vectorString: 'VEC4',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      })
+      expect(document.document.max_base_score_cvss_label).toBe('CVSSv4.0')
     })
   })
 })

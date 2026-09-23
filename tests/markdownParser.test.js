@@ -8,6 +8,18 @@ describe('renderMarkdown', () => {
     expect(doc.document.distribution.text).toBe('plain text')
   })
 
+  it('leaves multi-line plain text (no markdown syntax) unwrapped and unchanged', () => {
+    // Regression test: without the `s` (dotAll) flag, `.` in the
+    // "was markdown actually used" detection regex doesn't match newlines,
+    // so this never matched at all for multi-line text - even though
+    // micromark, like any other plain text, still wraps it in a single
+    // <p> tag - and the wrapped version was incorrectly returned instead
+    // of the original plain text.
+    const doc = { document: { distribution: { text: 'line1\nline2' } } }
+    renderMarkdown(doc)
+    expect(doc.document.distribution.text).toBe('line1\nline2')
+  })
+
   it('renders bold markdown syntax to HTML', () => {
     const doc = { document: { distribution: { text: '**bold** text' } } }
     renderMarkdown(doc)
@@ -68,6 +80,34 @@ describe('renderMarkdown', () => {
       'plain',
       '<p><strong>bold</strong></p>',
     ])
+  })
+
+  it('applies markdown rendering to a triple-nested wildcard array field (vulnerabilities.*.remediations.*.group_ids.*.name)', () => {
+    const doc = {
+      vulnerabilities: [
+        {
+          remediations: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }],
+        },
+      ],
+    }
+    renderMarkdown(doc)
+    expect(doc.vulnerabilities[0].remediations[0].group_ids[0].name).toBe(
+      '<p><strong>bold</strong></p>',
+    )
+  })
+
+  it('applies markdown rendering to vulnerabilities.*.threats.*.group_ids.*.name', () => {
+    const doc = {
+      vulnerabilities: [
+        {
+          threats: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }],
+        },
+      ],
+    }
+    renderMarkdown(doc)
+    expect(doc.vulnerabilities[0].threats[0].group_ids[0].name).toBe(
+      '<p><strong>bold</strong></p>',
+    )
   })
 
   it('returns the same document instance it was given (mutates in place)', () => {
