@@ -16,10 +16,9 @@ npm install @secvisogram/html-template
 
 ## Usage
 
-Rendering a document is a two- (2.0) or three-step (2.1, if you also want
-markdown fields converted to HTML) pipeline: enrich the raw CSAF document
-with the data the template needs, optionally render markdown fields, then
-render the HTML template.
+Rendering a document is a three-step pipeline: enrich the raw CSAF document
+with the data the template needs, render markdown fields, then render the
+HTML template. All three steps apply to both CSAF versions.
 
 ### CSAF 2.0
 
@@ -140,9 +139,10 @@ returned document, which the bundled templates invoke as e.g.
 ## Rendered HTML output
 
 The bundled `lib/css` stylesheets (a vendored copy of
-[gutenberg-css](https://github.com/BafS/Gutenberg), plus Secvisogram's own
-`preview.css`) are inlined directly into `<style>` tags in the rendered
-HTML, rather than linked via `<link href="...">`. This makes the output a
+[gutenberg-css](https://github.com/BafS/Gutenberg)'s base and `modern` theme
+stylesheets, plus Secvisogram's own `preview.css`) are inlined directly into
+`<style>` tags in the rendered HTML, rather than linked via
+`<link href="...">`. This makes the output a
 single, self-contained HTML string/file with no separate network request or
 file path that needs to resolve correctly - which matters both for
 [`@secvisogram/cli`](https://github.com/secvisogram/cli)'s output (a
