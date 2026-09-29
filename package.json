@@ -1,0 +1,53 @@
+{
+  "name": "@secvisogram/html-template",
+  "version": "1.0.0",
+  "description": "HTML/PDF template rendering for CSAF advisories",
+  "keywords": [
+    "CSAF",
+    "Common Security Advisory Framework",
+    "Secvisogram"
+  ],
+  "license": "Apache-2.0",
+  "author": "eXXcellent solutions GmbH",
+  "repository": {
+    "url": "https://github.com/secvisogram/html-template"
+  },
+  "bugs": {
+    "url": "https://github.com/secvisogram/html-template/issues"
+  },
+  "homepage": "https://github.com/secvisogram/html-template#readme",
+  "files": [
+    "index.js",
+    "lib/**/*.js",
+    "lib/css/**/*.css",
+    "dist/**/*.d.ts"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "prepare": "tsc -b .",
+    "pretest": "tsc -b .",
+    "test": "prettier --check . && vitest run",
+    "test-coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "lodash": "^4.18.1",
+    "micromark": "^4.0.2",
+    "micromark-extension-gfm": "^3.0.0",
+    "mustache": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.25",
+    "@types/mustache": "^4.2.6",
+    "@types/node": "^24.13.5",
+    "@vitest/coverage-v8": "^5.0.1",
+    "prettier": "^3.9.8",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
