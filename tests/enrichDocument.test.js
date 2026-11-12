@@ -247,6 +247,25 @@ describe('enrichDocumentV2_0', () => {
       expect(document.vulnerabilities[0].remediations_mitigation).toEqual([])
     })
 
+    it('buckets the CSAF 2.1 categories fix_planned and optional_patch instead of treating them as unknown', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        vulnerabilities: [
+          {
+            remediations: [
+              { category: 'fix_planned', details: 'a' },
+              { category: 'optional_patch', details: 'b' },
+              { category: 'made_up', details: 'c' },
+            ],
+          },
+        ],
+      })
+      const vulnerability = document.vulnerabilities[0]
+      expect(vulnerability.remediations_fix_planned).toHaveLength(1)
+      expect(vulnerability.remediations_optional_patch).toHaveLength(1)
+      expect(vulnerability.remediations_unknown).toHaveLength(1)
+    })
+
     it('sorts remediations within a category by date, most recent first', () => {
       const { document } = enrichDocumentV2_0({
         document: {},
@@ -707,5 +726,269 @@ describe('enrichDocumentV2_1', () => {
       })
       expect(document.document.max_base_score_cvss_label).toBe('CVSSv4.0')
     })
+  })
+
+  describe('product_paths', () => {
+    it('indexes products defined in product_tree.product_paths', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        product_tree: {
+          product_groups: [{ group_id: 'G1', product_ids: ['P2'] }],
+          product_paths: [
+            {
+              beginning_product_reference: 'P1',
+              subpaths: [],
+              full_product_name: { product_id: 'P2', name: 'Path Product' },
+            },
+          ],
+        },
+      })
+      expect(document.product_tree.product_groups[0].product_ids).toEqual([
+        { id: 'P2', name: 'Path Product' },
+      ])
+    })
+  })
+
+  describe('product_status.unknown', () => {
+    it('resolves product names and CVSS data for the unknown group', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        product_tree: {
+          full_product_names: [{ product_id: 'P1', name: 'Product One' }],
+        },
+        vulnerabilities: [
+          {
+            metrics: [
+              {
+                products: ['P1'],
+                content: {
+                  cvss_v3: {
+                    version: '3.1',
+                    baseScore: 5,
+                    vectorString: 'VEC',
+                  },
+                },
+              },
+            ],
+            product_status: { unknown: ['P1'] },
+          },
+        ],
+      })
+      expect(document.vulnerabilities[0].product_status.unknown).toEqual([
+        {
+          id: 'P1',
+          name: 'Product One',
+          vectorString: 'VEC',
+          baseScore: 5,
+          cvssVersion: '3.1',
+        },
+      ])
+    })
+  })
+
+  describe('product_ids / group_ids on notes, ids and first_known_exploitation_dates', () => {
+    const productTree = {
+      full_product_names: [{ product_id: 'P1', name: 'Product One' }],
+      product_groups: [{ group_id: 'G1', product_ids: ['P1'], summary: 'S1' }],
+    }
+
+    it('resolves them to id/name pairs', () => {
+      const { document } = enrichDocumentV2_1({
+        document: { notes: [{ category: 'general', product_ids: ['P1'] }] },
+        product_tree: productTree,
+        vulnerabilities: [
+          {
+            notes: [{ category: 'general', group_ids: ['G1'] }],
+            ids: [{ system_name: 'S', text: 'T', product_ids: ['P1'] }],
+            first_known_exploitation_dates: [
+              { date: 'd', exploitation_date: 'e', group_ids: ['G1'] },
+            ],
+          },
+        ],
+      })
+      const vulnerability = document.vulnerabilities[0]
+      expect(document.document.notes_general[0].product_ids).toEqual([
+        { id: 'P1', name: 'Product One' },
+      ])
+      expect(vulnerability.notes_general[0].group_ids).toEqual([
+        { id: 'G1', name: 'S1' },
+      ])
+      expect(vulnerability.ids[0].product_ids).toEqual([
+        { id: 'P1', name: 'Product One' },
+      ])
+      expect(vulnerability.first_known_exploitation_dates[0].group_ids).toEqual(
+        [{ id: 'G1', name: 'S1' }],
+      )
+    })
+
+    it('only collects ids that are scoped to products or groups in ids_scoped', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        product_tree: productTree,
+        vulnerabilities: [
+          {
+            ids: [
+              { system_name: 'S', text: 'scoped', product_ids: ['P1'] },
+              { system_name: 'S', text: 'global' },
+            ],
+          },
+        ],
+      })
+      expect(
+        document.vulnerabilities[0].ids_scoped.map(
+          (/** @type {any} */ id) => id.text,
+        ),
+      ).toEqual(['scoped'])
+    })
+
+    it('leaves notes without product_ids/group_ids untouched', () => {
+      const note = { category: 'general', text: 'a' }
+      const { document } = enrichDocumentV2_1({
+        document: { notes: [note] },
+      })
+      expect(document.document.notes_general[0]).toEqual(note)
+    })
+  })
+
+  describe('document.involvement', () => {
+    it('resolves entity refs to names, falling back to the id, and resolves action scopes', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {
+          involvement: {
+            entities: [
+              { entity_id: 'EID-1', name: 'Acme', category: 'vendor' },
+              { entity_id: 'EID-2', category: 'user' },
+            ],
+            entity_groups: [
+              {
+                entity_group_id: 'EGID-1',
+                name: 'Group',
+                entity_ids: ['EID-1', 'EID-2'],
+              },
+            ],
+            actions: [
+              {
+                action_id: 'A1',
+                category: 'fix_release',
+                status: 'completed',
+                date: 'd',
+                acting_entity_refs: ['EID-1'],
+                receiving_entity_refs: ['EGID-1', 'EID-unknown'],
+                product_ids: ['P1'],
+              },
+            ],
+          },
+        },
+        product_tree: {
+          full_product_names: [{ product_id: 'P1', name: 'Product One' }],
+        },
+      })
+      const involvement = document.document.involvement
+      expect(
+        involvement.entities.map((/** @type {any} */ e) => e.display_name),
+      ).toEqual(['Acme', 'EID-2'])
+      expect(involvement.entity_groups[0].entity_ids).toEqual([
+        { id: 'EID-1', name: 'Acme' },
+        { id: 'EID-2', name: 'EID-2' },
+      ])
+      const action = involvement.actions[0]
+      expect(action.acting_entity_refs).toEqual([{ id: 'EID-1', name: 'Acme' }])
+      expect(action.receiving_entity_refs).toEqual([
+        { id: 'EGID-1', name: 'Group' },
+        { id: 'EID-unknown', name: 'EID-unknown' },
+      ])
+      expect(action.product_ids).toEqual([{ id: 'P1', name: 'Product One' }])
+    })
+
+    it('leaves a document without involvement untouched', () => {
+      const { document } = enrichDocumentV2_1({ document: {} })
+      expect(document.document.involvement).toBeUndefined()
+    })
+  })
+
+  describe('metrics_details', () => {
+    it('collects epss, qualitative severity rating and a condensed ssvc_v2 selection list', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        product_tree: {
+          full_product_names: [{ product_id: 'P1', name: 'Product One' }],
+        },
+        vulnerabilities: [
+          {
+            metrics: [
+              {
+                products: ['P1', 'P-unknown'],
+                source: 'https://example.com',
+                content: {
+                  qualitative_severity_rating: 'low',
+                  epss: { probability: '1', percentile: '2', timestamp: 't' },
+                  ssvc_v2: {
+                    timestamp: 'ts',
+                    selections: [
+                      {
+                        namespace: 'ssvc',
+                        key: 'KEY',
+                        version: '1.0.0',
+                        values: [{ key: 'V1' }, { key: 'V2', name: 'Two' }],
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      })
+      expect(document.vulnerabilities[0].metrics_details).toEqual([
+        {
+          products: [
+            { id: 'P1', name: 'Product One' },
+            { id: 'P-unknown', name: 'P-unknown' },
+          ],
+          source: 'https://example.com',
+          qualitative_severity_rating: 'low',
+          epss: { probability: '1', percentile: '2', timestamp: 't' },
+          ssvc: {
+            timestamp: 'ts',
+            selections: [
+              {
+                label: 'KEY',
+                namespace: 'ssvc',
+                version: '1.0.0',
+                values: 'V1, Two',
+              },
+            ],
+          },
+        },
+      ])
+    })
+
+    it('skips metrics that only carry CVSS data', () => {
+      const { document } = enrichDocumentV2_1({
+        document: {},
+        vulnerabilities: [
+          {
+            metrics: [
+              {
+                products: ['P1'],
+                content: { cvss_v3: { version: '3.1', baseScore: 1 } },
+              },
+            ],
+          },
+        ],
+      })
+      expect(document.vulnerabilities[0].metrics_details).toEqual([])
+    })
+  })
+})
+
+describe('enrichDocumentV2_0 does not add CSAF 2.1-only attributes', () => {
+  it('adds no metrics_details, ids_scoped or involvement handling', () => {
+    const { document } = enrichDocumentV2_0({
+      document: {},
+      vulnerabilities: [{ title: 'V' }],
+    })
+    expect(document.vulnerabilities[0].metrics_details).toBeUndefined()
+    expect(document.vulnerabilities[0].ids_scoped).toBeUndefined()
   })
 })

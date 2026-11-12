@@ -114,4 +114,89 @@ describe('renderMarkdown', () => {
     const doc = { document: { distribution: { text: 'plain' } } }
     expect(renderMarkdown(doc)).toBe(doc)
   })
+
+  it.each([
+    [
+      'document.publisher.contact.details',
+      (/** @type {any} */ d) => d.document.publisher.contact.details,
+      { document: { publisher: { contact: { details: '**bold**' } } } },
+    ],
+    [
+      'document.involvement.actions.*.summary',
+      (/** @type {any} */ d) => d.document.involvement.actions[0].summary,
+      { document: { involvement: { actions: [{ summary: '**bold**' }] } } },
+    ],
+    [
+      'document.involvement.entities.*.contact.details',
+      (/** @type {any} */ d) =>
+        d.document.involvement.entities[0].contact.details,
+      {
+        document: {
+          involvement: { entities: [{ contact: { details: '**bold**' } }] },
+        },
+      },
+    ],
+    [
+      'document.involvement.entity_groups.*.summary',
+      (/** @type {any} */ d) => d.document.involvement.entity_groups[0].summary,
+      {
+        document: { involvement: { entity_groups: [{ summary: '**bold**' }] } },
+      },
+    ],
+    [
+      'document.notes.*.group_ids.*.name',
+      (/** @type {any} */ d) => d.document.notes[0].group_ids[0].name,
+      {
+        document: { notes: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }] },
+      },
+    ],
+    [
+      'document.involvement.actions.*.group_ids.*.name',
+      (/** @type {any} */ d) =>
+        d.document.involvement.actions[0].group_ids[0].name,
+      {
+        document: {
+          involvement: {
+            actions: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }],
+          },
+        },
+      },
+    ],
+    [
+      'vulnerabilities.*.notes.*.group_ids.*.name',
+      (/** @type {any} */ d) => d.vulnerabilities[0].notes[0].group_ids[0].name,
+      {
+        vulnerabilities: [
+          { notes: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }] },
+        ],
+      },
+    ],
+    [
+      'vulnerabilities.*.ids.*.group_ids.*.name',
+      (/** @type {any} */ d) => d.vulnerabilities[0].ids[0].group_ids[0].name,
+      {
+        vulnerabilities: [
+          { ids: [{ group_ids: [{ id: 'G1', name: '**bold**' }] }] },
+        ],
+      },
+    ],
+    [
+      'vulnerabilities.*.first_known_exploitation_dates.*.group_ids.*.name',
+      (/** @type {any} */ d) =>
+        d.vulnerabilities[0].first_known_exploitation_dates[0].group_ids[0]
+          .name,
+      {
+        vulnerabilities: [
+          {
+            first_known_exploitation_dates: [
+              { group_ids: [{ id: 'G1', name: '**bold**' }] },
+            ],
+          },
+        ],
+      },
+    ],
+  ])('renders the CSAF 2.1 markdown field %s', (_field, read, doc) => {
+    renderMarkdown(doc)
+    expect(read(doc)).toBe('<p><strong>bold</strong></p>')
+  })
 })
